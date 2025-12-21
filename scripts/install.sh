@@ -15,6 +15,7 @@ SHA=""
 SERIAL="/dev/ttyUSB0"
 HZ="2.0"
 REPO_URL="${REPO_URL_DEFAULT}"
+SERIAL_GROUP=""
 ASSUME_YES=0
 
 usage() {
@@ -68,6 +69,16 @@ install_uv() {
   require_cmd uv
 }
 
+detect_serial_group() {
+  if getent group dialout >/dev/null 2>&1; then
+    SERIAL_GROUP="dialout"
+  elif getent group uucp >/dev/null 2>&1; then
+    SERIAL_GROUP="uucp"
+  else
+    SERIAL_GROUP=""
+  fi
+}
+
 create_user() {
   log "Ensuring system user exists: ${APP_USER}"
   if id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -77,6 +88,14 @@ create_user() {
   fi
   mkdir -p "/var/lib/${APP_USER}"
   chown -R "${APP_USER}:${APP_USER}" "/var/lib/${APP_USER}"
+
+  detect_serial_group
+  if [[ -n "${SERIAL_GROUP}" ]]; then
+    log "Adding ${APP_USER} to ${SERIAL_GROUP} for serial access"
+    usermod -a -G "${SERIAL_GROUP}" "${APP_USER}"
+  else
+    log "No serial group (dialout/uucp) found; serial access may require manual fix"
+  fi
 }
 
 install_repo() {
@@ -116,6 +135,7 @@ Wants=network-online.target tailscaled.service
 [Service]
 Type=simple
 User=${APP_USER}
+${SERIAL_GROUP:+SupplementaryGroups=${SERIAL_GROUP}}
 WorkingDirectory=${APP_DIR}
 Environment=WS_HOST=${WS_HOST}
 Environment=WS_PORT=${WS_PORT}
@@ -144,7 +164,19 @@ EOF
 configure_serve() {
   log "Configuring Tailscale Serve (HTTPS -> localhost:${WS_PORT})"
   tailscale serve reset >/dev/null 2>&1 || true
-  tailscale serve https:443 "http://${WS_HOST}:${WS_PORT}"
+  if tailscale serve --bg "http://${WS_HOST}:${WS_PORT}" >/dev/null 2>&1; then
+    return
+  fi
+  if tailscale serve https / "http://${WS_HOST}:${WS_PORT}" >/dev/null 2>&1; then
+    return
+  fi
+  if tailscale serve https:443 "http://${WS_HOST}:${WS_PORT}" >/dev/null 2>&1; then
+    return
+  fi
+  if tailscale serve --https=443 / "http://${WS_HOST}:${WS_PORT}" >/dev/null 2>&1; then
+    return
+  fi
+  die "Tailscale Serve failed. Run: tailscale serve --help"
 }
 
 install_updater() {
