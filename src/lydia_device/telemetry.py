@@ -9,7 +9,8 @@ import cbor2
 
 from lydia_device.types import WsLike
 
-from .parse_status import parse_status_block
+from .msh import MshSession
+from .parse_status import StatusParsed, parse_status_block
 
 
 class TelemetryHub:
@@ -53,7 +54,7 @@ class TelemetryHub:
     # Debounce logic
     # ------------------------------
 
-    def _fingerprint(self, parsed: Dict[str, Any]) -> str:
+    def _fingerprint(self, parsed: StatusParsed) -> str:
         """
         Generate a stable fingerprint over fields that matter to the UI.
         If this changes, emit a new `status` event.
@@ -73,7 +74,7 @@ class TelemetryHub:
         }
         return json.dumps(core, sort_keys=True, separators=(",", ":"))
 
-    def changed(self, parsed: Dict[str, Any]) -> bool:
+    def changed(self, parsed: StatusParsed) -> bool:
         fp = self._fingerprint(parsed)
         if fp != self._last_fingerprint:
             self._last_fingerprint = fp
@@ -87,7 +88,7 @@ class TelemetryHub:
 
 
 async def poll_status_loop(
-    msh,
+    msh: MshSession,
     hub: TelemetryHub,
     hz: float = 2.0,
 ) -> None:
@@ -112,8 +113,7 @@ async def poll_status_loop(
         ts_ms = int(time.time() * 1000)
 
         ok = True
-        stdout: Optional[str] = None
-        parsed: Optional[Dict[str, Any]] = None
+        parsed: Optional[StatusParsed] = None
         err: Optional[str] = None
 
         try:
