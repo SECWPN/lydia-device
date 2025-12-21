@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it."
+title: "lydia-device"
+type: software
+authors:
+  - family-names: "Templeton"
+    given-names: "Alexander West"
+    orcid: "https://orcid.org/0009-0005-7058-3912"
+url: "http://templeton.cloud/"
+repository-code: "https://github.com/SECWPN/lydia-device"
+license: "MIT"

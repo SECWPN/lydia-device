@@ -1,0 +1,28 @@
+[project]
+name = "lydia-device"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Alexander Templeton", email = "10369436+azide0x37@users.noreply.github.com" }
+]
+requires-python = "==3.14.*"
+dependencies = [
+    "cbor2>=5.7.1",
+    "pyserial-asyncio>=0.6",
+    "websockets>=15.0.1",
+]
+
+[project.scripts]
+lydia-device = "lydia_device.main:main_cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "ruff>=0.14.10",
+]
