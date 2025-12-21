@@ -94,7 +94,7 @@ install_repo() {
   chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 
   log "Installing deps with uv..."
-  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && uv python pin 3.14 && uv sync"
+  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && uv python install 3.14 && uv python pin 3.14 && uv sync"
 }
 
 write_service() {

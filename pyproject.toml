@@ -1,7 +1,7 @@
 [project]
 name = "lydia-device"
 version = "0.1.0"
-description = "Add your description here"
+description = "Production-grade RT-Thread MSH bridge over secure WebSockets via Tailscale"
 readme = "README.md"
 authors = [
     { name = "Alexander Templeton", email = "10369436+azide0x37@users.noreply.github.com" }

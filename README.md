@@ -68,7 +68,7 @@ MagicDNS enabled in your tailnet
 ## One-line install
 
 ```bash
-curl -fsSL https://lydia.secwpn.com/install.sh | sudo
+curl -fsSL https://lydia.secwpn.com/install.sh | sudo bash
 ```
 
 ## Optional flags
