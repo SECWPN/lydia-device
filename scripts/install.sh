@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_URL_DEFAULT="https://github.com/SECWPN/lydia-device.git"
-REF_DEFAULT="v0.2.0"   # you will update this when you cut releases
+REF_DEFAULT="v0.3.0"   # you will update this when you cut releases
 APP_DIR="/opt/lydia-device"
 APP_USER="lydia-device"
 SERVICE_NAME="lydia-device"
