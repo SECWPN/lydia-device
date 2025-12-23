@@ -75,7 +75,7 @@ curl -fsSL https://lydia.secwpn.com/install.sh | sudo bash
 
 ```bash
 curl -fsSL https://lydia.secwpn.com/install.sh | sudo bash -s -- \
-  --ref v0.7.0 \
+  --ref v0.8.0 \
   --serial /dev/ttyUSB0 \
   --hz 2
 
