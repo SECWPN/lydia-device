@@ -1,6 +1,6 @@
 [project]
 name = "lydia-device"
-version = "0.6.0"
+version = "0.7.0"
 description = "Production-grade RT-Thread MSH bridge over secure WebSockets via Tailscale"
 readme = "README.md"
 authors = [
