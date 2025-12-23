@@ -339,9 +339,9 @@ print_wss() {
   hn="$(hostname -s)"
   status_json="$(tailscale status --json 2>/dev/null || true)"
   suffix="$(
-    python3 - <<'PY' <<<"${status_json}"
+    python3 - "${status_json}" <<'PY'
 import json,sys
-raw = sys.stdin.read().strip()
+raw = sys.argv[1].strip() if len(sys.argv) > 1 else ""
 if not raw:
     sys.exit(0)
 try:
