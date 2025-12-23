@@ -10,6 +10,7 @@ import cbor2
 from lydia_device.types import WsLike
 
 from .msh import MshSession
+from .parse_process import ProcessParsed, parse_process_block
 from .parse_status import StatusParsed, parse_status_block
 
 
@@ -63,6 +64,9 @@ class TelemetryHub:
             "work_state": parsed.get("work_state"),
             "work_mode": parsed.get("work_mode"),
             "laser_state": parsed.get("laser_state"),
+            "pulse_on": parsed.get("pulse_on"),
+            "pulse_off": parsed.get("pulse_off"),
+            "wave_state": parsed.get("wave_state"),
             "power_out": parsed.get("power_out"),
             "warning": parsed.get("warning"),
             "error": parsed.get("error"),
@@ -152,6 +156,67 @@ async def poll_status_loop(
                 {
                     "type": "event",
                     "name": "status_error",
+                    "ts_ms": ts_ms,
+                    "latency_ms": latency_ms,
+                    "error": err or "unknown error",
+                }
+            )
+
+        elapsed = time.perf_counter() - t0
+        await asyncio.sleep(max(0.0, period - elapsed))
+
+
+async def poll_process_loop(
+    msh: MshSession,
+    hub: TelemetryHub,
+    hz: float = 0.2,
+) -> None:
+    """
+    Poll `cur_pro` + `feeder_pro` at a low rate and emit `process_params` on change.
+    """
+    hz = max(0.05, min(hz, 1.0))
+    period = 1.0 / hz
+    last_fp: Optional[str] = None
+
+    while True:
+        t0 = time.perf_counter()
+        ts_ms = int(time.time() * 1000)
+
+        ok = True
+        err: Optional[str] = None
+        cur: Optional[ProcessParsed] = None
+        feeder: Optional[ProcessParsed] = None
+
+        try:
+            cur_stdout = await msh.exec("cur_pro", timeout=5.0)
+            feeder_stdout = await msh.exec("feeder_pro", timeout=5.0)
+            cur = parse_process_block(cur_stdout)
+            feeder = parse_process_block(feeder_stdout)
+        except Exception as e:
+            ok = False
+            err = str(e)
+
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        if ok and cur is not None and feeder is not None:
+            payload = {"cur_pro": cur, "feeder_pro": feeder}
+            fp = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+            if fp != last_fp:
+                last_fp = fp
+                await hub.broadcast(
+                    {
+                        "type": "event",
+                        "name": "process_params",
+                        "ts_ms": ts_ms,
+                        "latency_ms": latency_ms,
+                        "parsed": payload,
+                    }
+                )
+        else:
+            await hub.broadcast(
+                {
+                    "type": "event",
+                    "name": "process_error",
                     "ts_ms": ts_ms,
                     "latency_ms": latency_ms,
                     "error": err or "unknown error",

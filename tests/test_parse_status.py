@@ -40,6 +40,9 @@ msh >
     assert parsed["work_mode"] == "AUTO"
     assert parsed["work_state"] == "IDLE"
     assert parsed["laser_state"] == "OFF"
+    assert parsed["pulse_on"] == 10
+    assert parsed["pulse_off"] == 20
+    assert parsed["wave_state"] == 3
     assert parsed["io_flags"]["DOOR"] == 1
     assert parsed["power_out"]["w"] == 34
     assert parsed["power_param"]["pwm_fre"] == 1000
@@ -90,3 +93,12 @@ msh >
 
     assert parsed["work_mode"] == "AUTO"
     assert "power_out" not in parsed
+
+
+def test_parse_status_tolerates_cr_and_units() -> None:
+    text = "pulse_on:150\r\npulse_off:150 ms\r\nwave state:0\r\nmsh >\r\n"
+    parsed = parse_status_block(text)
+
+    assert parsed["pulse_on"] == 150
+    assert parsed["pulse_off"] == 150
+    assert parsed["wave_state"] == 0

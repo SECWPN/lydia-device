@@ -16,6 +16,8 @@ SERIAL="/dev/ttyUSB0"
 HZ="2.0"
 REPO_URL="${REPO_URL_DEFAULT}"
 SERIAL_GROUP=""
+SERIAL_DEV_GROUP=""
+SERVICE_GROUPS=""
 ASSUME_YES=0
 
 usage() {
@@ -69,14 +71,90 @@ install_uv() {
   require_cmd uv
 }
 
-detect_serial_group() {
+detect_serial_device_group() {
+  local gname="" gid=""
+  if [[ -e "${SERIAL}" ]]; then
+    gname="$(stat -c '%G' "${SERIAL}" 2>/dev/null || true)"
+    if [[ -n "${gname}" && "${gname}" =~ ^[0-9]+$ ]]; then
+      gid="${gname}"
+      gname="$(getent group "${gid}" | cut -d: -f1)"
+    fi
+  fi
+  SERIAL_DEV_GROUP="${gname}"
+}
+
+choose_serial_group() {
   if getent group dialout >/dev/null 2>&1; then
     SERIAL_GROUP="dialout"
   elif getent group uucp >/dev/null 2>&1; then
     SERIAL_GROUP="uucp"
   else
-    SERIAL_GROUP=""
+    SERIAL_GROUP="${SERIAL_DEV_GROUP}"
   fi
+}
+
+append_group() {
+  local group="$1"
+  [[ -z "${group}" ]] && return
+  if [[ " ${SERVICE_GROUPS} " != *" ${group} "* ]]; then
+    SERVICE_GROUPS="${SERVICE_GROUPS}${SERVICE_GROUPS:+ }${group}"
+  fi
+}
+
+install_udev_rule() {
+  local udev_info vendor product serial serial_escaped serial_match rule_file
+
+  if [[ -z "${SERIAL_GROUP}" ]]; then
+    log "No serial group available; skipping udev rule"
+    return
+  fi
+  if ! getent group "${SERIAL_GROUP}" >/dev/null 2>&1; then
+    log "Group ${SERIAL_GROUP} does not exist; skipping udev rule"
+    return
+  fi
+  if ! command -v udevadm >/dev/null 2>&1; then
+    log "udevadm not available; skipping udev rule"
+    return
+  fi
+  if [[ ! -e "${SERIAL}" ]]; then
+    log "Serial device not present at ${SERIAL}; skipping udev rule"
+    return
+  fi
+
+  udev_info="$(udevadm info -a -n "${SERIAL}" 2>/dev/null || true)"
+  vendor="$(printf '%s\n' "${udev_info}" | awk -F'==' '/ATTRS{idVendor}/ {gsub(/"/,"",$2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}')"
+  product="$(printf '%s\n' "${udev_info}" | awk -F'==' '/ATTRS{idProduct}/ {gsub(/"/,"",$2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}')"
+  serial="$(printf '%s\n' "${udev_info}" | awk -F'==' '/ATTRS{serial}/ {gsub(/"/,"",$2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}')"
+
+  if [[ -z "${vendor}" || -z "${product}" ]]; then
+    log "Unable to determine USB idVendor/idProduct for ${SERIAL}; skipping udev rule"
+    return
+  fi
+
+  serial_match=""
+  if [[ -n "${serial}" ]]; then
+    serial_escaped="${serial//\"/\\\"}"
+    serial_match=", ATTRS{serial}==\"${serial_escaped}\""
+  fi
+
+  rule_file="/etc/udev/rules.d/99-lydia-serial.rules"
+  log "Installing udev rule for ${SERIAL} (group=${SERIAL_GROUP})"
+  cat >"${rule_file}" <<EOF
+# SECWPN Lydia Device serial permissions
+SUBSYSTEM=="tty", ATTRS{idVendor}=="${vendor}", ATTRS{idProduct}=="${product}"${serial_match}, GROUP="${SERIAL_GROUP}", MODE="0660"
+EOF
+
+  udevadm control --reload-rules
+  udevadm trigger --name-match="$(basename "${SERIAL}")" >/dev/null 2>&1 || true
+}
+
+prepare_serial_access() {
+  detect_serial_device_group
+  choose_serial_group
+  SERVICE_GROUPS=""
+  append_group "${SERIAL_GROUP}"
+  append_group "${SERIAL_DEV_GROUP}"
+  install_udev_rule
 }
 
 create_user() {
@@ -89,12 +167,16 @@ create_user() {
   mkdir -p "/var/lib/${APP_USER}"
   chown -R "${APP_USER}:${APP_USER}" "/var/lib/${APP_USER}"
 
-  detect_serial_group
   if [[ -n "${SERIAL_GROUP}" ]]; then
     log "Adding ${APP_USER} to ${SERIAL_GROUP} for serial access"
     usermod -a -G "${SERIAL_GROUP}" "${APP_USER}"
-  else
-    log "No serial group (dialout/uucp) found; serial access may require manual fix"
+  fi
+  if [[ -n "${SERIAL_DEV_GROUP}" && "${SERIAL_DEV_GROUP}" != "${SERIAL_GROUP}" ]]; then
+    log "Adding ${APP_USER} to ${SERIAL_DEV_GROUP} (current device group)"
+    usermod -a -G "${SERIAL_DEV_GROUP}" "${APP_USER}"
+  fi
+  if [[ -z "${SERIAL_GROUP}" && -z "${SERIAL_DEV_GROUP}" ]]; then
+    log "No serial group found; serial access may require manual fix"
   fi
 }
 
@@ -135,7 +217,7 @@ Wants=network-online.target tailscaled.service
 [Service]
 Type=simple
 User=${APP_USER}
-${SERIAL_GROUP:+SupplementaryGroups=${SERIAL_GROUP}}
+${SERVICE_GROUPS:+SupplementaryGroups=${SERVICE_GROUPS}}
 WorkingDirectory=${APP_DIR}
 Environment=WS_HOST=${WS_HOST}
 Environment=WS_PORT=${WS_PORT}
@@ -248,12 +330,13 @@ announce_plan() {
 [install] This installer will:
 [install]  1) Verify Tailscale is running and Serve is available
 [install]  2) Install uv (Python package manager) to /usr/local/bin
-[install]  3) Create the ${APP_USER} system user
-[install]  4) Clone/update ${REPO_URL} into ${APP_DIR}
-[install]  5) Install dependencies with uv
-[install]  6) Install and start the ${SERVICE_NAME} systemd service
-[install]  7) Configure Tailscale Serve to proxy HTTPS to localhost:${WS_PORT}
-[install]  8) Install the daily update timer
+[install]  3) Ensure serial permissions (udev rule + groups)
+[install]  4) Create the ${APP_USER} system user
+[install]  5) Clone/update ${REPO_URL} into ${APP_DIR}
+[install]  6) Install dependencies with uv
+[install]  7) Install and start the ${SERVICE_NAME} systemd service
+[install]  8) Configure Tailscale Serve to proxy HTTPS to localhost:${WS_PORT}
+[install]  9) Install the daily update timer
 EOF
   log "Repo: ${REPO_URL}"
   if [[ -n "${SHA}" ]]; then
@@ -288,6 +371,7 @@ main() {
   apt_install ca-certificates
   check_tailscale
   install_uv
+  prepare_serial_access
   create_user
   install_repo
   write_service

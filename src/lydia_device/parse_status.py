@@ -109,6 +109,7 @@ def _parse_ntc_line(line: str) -> List[NtcReading]:
 
 
 def parse_status_block(text: str) -> StatusParsed:
+    text = text.replace("\r", "")
     out: StatusParsed = {}
 
     # times
@@ -130,9 +131,9 @@ def parse_status_block(text: str) -> StatusParsed:
             out[key] = v
 
     for pat, key in [
-        (r"^pulse_on:(\d+)$", "pulse_on"),
-        (r"^pulse_off:(\d+)$", "pulse_off"),
-        (r"^wave state:(\d+)$", "wave_state"),
+        (r"^pulse_on:\s*(\d+)\s*(?:[A-Za-z]+)?\s*$", "pulse_on"),
+        (r"^pulse_off:\s*(\d+)\s*(?:[A-Za-z]+)?\s*$", "pulse_off"),
+        (r"^wave\s+state:\s*(\d+)\s*$", "wave_state"),
     ]:
         v = _find1(pat, text)
         if v:
@@ -275,5 +276,4 @@ def parse_status_block(text: str) -> StatusParsed:
     if v:
         out["tem"] = int(v)
 
-    return out
     return out

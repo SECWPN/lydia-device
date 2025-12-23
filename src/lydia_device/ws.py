@@ -9,6 +9,8 @@ import websockets
 from lydia_device.types import WsLike
 
 from .policy import is_allowed
+from .parse_getall import parse_getall_block
+from .parse_process import parse_process_block
 from .parse_status import parse_status_block
 from .audit import audit_log
 from .telemetry import TelemetryHub
@@ -106,6 +108,10 @@ async def ws_handler(
                 verb = cmd.strip().split()[0].lower()
                 if verb == "status":
                     parsed = parse_status_block(stdout)
+                elif verb in {"cur_pro", "feeder_pro"}:
+                    parsed = parse_process_block(stdout)
+                elif verb == "getall":
+                    parsed = parse_getall_block(stdout)
 
                 await ws.send(
                     cbor2.dumps(
