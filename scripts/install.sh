@@ -46,9 +46,21 @@ die(){ echo "[install] ERROR: $*" >&2; exit 1; }
 export PATH="/usr/local/bin:${PATH}"
 
 apt_install() {
+  local missing=()
+  local pkg
+  for pkg in "$@"; do
+    if ! dpkg -s "${pkg}" >/dev/null 2>&1; then
+      missing+=("${pkg}")
+    fi
+  done
+  if [[ "${#missing[@]}" -eq 0 ]]; then
+    log "Packages already installed: $*"
+    return
+  fi
+
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -y
-  apt-get install -y --no-install-recommends "$@"
+  apt-get install -y --no-install-recommends "${missing[@]}"
 }
 
 require_cmd(){ command -v "$1" >/dev/null 2>&1 || die "Missing: $1"; }
@@ -103,6 +115,7 @@ append_group() {
 
 install_udev_rule() {
   local udev_info vendor product serial serial_escaped serial_match rule_file
+  local new_rule existing_rule
 
   if [[ -z "${SERIAL_GROUP}" ]]; then
     log "No serial group available; skipping udev rule"
@@ -138,10 +151,19 @@ install_udev_rule() {
   fi
 
   rule_file="/etc/udev/rules.d/99-lydia-serial.rules"
+  new_rule="SUBSYSTEM==\"tty\", ATTRS{idVendor}==\"${vendor}\", ATTRS{idProduct}==\"${product}\"${serial_match}, GROUP=\"${SERIAL_GROUP}\", MODE=\"0660\""
+  if [[ -f "${rule_file}" ]]; then
+    existing_rule="$(grep -E 'SUBSYSTEM=="tty".*ATTRS\\{idVendor\\}==".*".*ATTRS\\{idProduct\\}==".*"' "${rule_file}" | tail -n 1 || true)"
+    if [[ "${existing_rule}" == "${new_rule}" ]]; then
+      log "Udev rule already up to date; skipping"
+      return
+    fi
+  fi
+
   log "Installing udev rule for ${SERIAL} (group=${SERIAL_GROUP})"
   cat >"${rule_file}" <<EOF
 # SECWPN Lydia Device serial permissions
-SUBSYSTEM=="tty", ATTRS{idVendor}=="${vendor}", ATTRS{idProduct}=="${product}"${serial_match}, GROUP="${SERIAL_GROUP}", MODE="0660"
+${new_rule}
 EOF
 
   udevadm control --reload-rules
@@ -185,21 +207,22 @@ install_repo() {
   apt_install git python3 python3-venv
   if [[ -d "${APP_DIR}/.git" ]]; then
     log "Updating existing repo..."
-    git -C "${APP_DIR}" fetch --all --tags
+    chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
+    sudo -u "${APP_USER}" -H git -C "${APP_DIR}" fetch --all --tags
   else
     rm -rf "${APP_DIR}"
-    git clone "${REPO_URL}" "${APP_DIR}"
+    mkdir -p "${APP_DIR}"
+    chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
+    sudo -u "${APP_USER}" -H git clone "${REPO_URL}" "${APP_DIR}"
   fi
 
   if [[ -n "${SHA}" ]]; then
     log "Checking out pinned SHA: ${SHA}"
-    git -C "${APP_DIR}" checkout -f "${SHA}"
+    sudo -u "${APP_USER}" -H git -C "${APP_DIR}" checkout -f "${SHA}"
   else
     log "Checking out ref: ${REF}"
-    git -C "${APP_DIR}" checkout -f "${REF}"
+    sudo -u "${APP_USER}" -H git -C "${APP_DIR}" checkout -f "${REF}"
   fi
-
-  chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 
   log "Installing deps with uv..."
   sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && uv python install 3.14 && uv python pin 3.14 && uv sync"
@@ -273,11 +296,11 @@ SERVICE_NAME="${SERVICE_NAME}"
 REF="${REF}"
 SHA="${SHA}"
 
-git -C "\${APP_DIR}" fetch --all --tags
+sudo -u "\${APP_USER}" -H git -C "\${APP_DIR}" fetch --all --tags
 if [[ -n "\${SHA}" ]]; then
-  git -C "\${APP_DIR}" checkout -f "\${SHA}"
+  sudo -u "\${APP_USER}" -H git -C "\${APP_DIR}" checkout -f "\${SHA}"
 else
-  git -C "\${APP_DIR}" checkout -f "\${REF}"
+  sudo -u "\${APP_USER}" -H git -C "\${APP_DIR}" checkout -f "\${REF}"
 fi
 
 sudo -u "\${APP_USER}" -H bash -lc "cd '\${APP_DIR}' && /usr/local/bin/uv sync"
