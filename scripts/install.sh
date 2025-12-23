@@ -335,15 +335,26 @@ EOF
 }
 
 print_wss() {
-  local hn suffix
+  local hn suffix status_json
   hn="$(hostname -s)"
-  suffix="$(tailscale status --json | python3 - <<'PY'
+  status_json="$(tailscale status --json 2>/dev/null || true)"
+  suffix="$(
+    python3 - <<'PY' <<<"${status_json}"
 import json,sys
-j=json.load(sys.stdin)
+raw = sys.stdin.read().strip()
+if not raw:
+    sys.exit(0)
+try:
+    j = json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(0)
 print((j.get("MagicDNSSuffix") or "").strip())
 PY
-)"
-  [[ -n "${suffix}" ]] || die "MagicDNS not enabled on tailnet. Enable MagicDNS to get stable hostname."
+  )"
+  if [[ -z "${suffix}" ]]; then
+    log "MagicDNS suffix unavailable; skipping WSS URL"
+    return
+  fi
   echo
   echo "wss://${hn}.${suffix}/"
 }
