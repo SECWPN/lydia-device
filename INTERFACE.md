@@ -32,6 +32,36 @@ Request:
 { "type": "exec", "id": "req-1", "cmd": "status" }
 ```
 
+Power setter example:
+
+```json
+{ "type": "exec", "id": "req-2", "cmd": "power 50" }
+```
+
+Dual-use commands (getter without params, setter with params): `power`, `wave`, `maxpower`,
+`risetk`, `falltk`, `gaseatk`, `gaslatk`, `onwatk`, `offwatk`, `headfre`, `headwide`,
+`feederoutspeed`
+
+Power getter example:
+
+```json
+{ "type": "exec", "id": "req-3", "cmd": "power" }
+```
+
+Weld parameter setters:
+
+```json
+{ "type": "exec", "id": "req-4", "cmd": "headfre 800" }
+{ "type": "exec", "id": "req-5", "cmd": "headwide 80" }
+{ "type": "exec", "id": "req-6", "cmd": "feederoutspeed 10" }
+```
+
+Notes:
+
+- `headfre` is in Hz (e.g., `headfre 800` -> 800 Hz).
+- `headwide` uses device units (e.g., `headwide 80` -> 8.0 mm).
+- `feederoutspeed` uses device units (commonly mm/s).
+
 Response (success):
 
 ```json
@@ -46,7 +76,7 @@ Response (success):
 }
 ```
 
-Response (error):
+Response (denied):
 
 ```json
 {
@@ -54,10 +84,30 @@ Response (error):
   "id": "req-1",
   "ok": false,
   "error": "Command not allowed by policy",
-  "reason": "Blocked verb: power",
+  "reason": "Blocked verb: reboot",
   "ts_ms": 1734800000000
 }
 ```
+
+Response (failure):
+
+```json
+{
+  "type": "result",
+  "id": "req-2",
+  "ok": false,
+  "error": "Timed out waiting for msh prompt",
+  "ts_ms": 1734800000000
+}
+```
+
+Command lifecycle:
+
+- Pending: once an `exec` is sent, treat it as pending until the `result` arrives (no explicit
+  pending message is emitted).
+- Success: `result.ok == true`.
+- Failure: `result.ok == false` with `error` set.
+- Denied: `result.ok == false` with `error == "Command not allowed by policy"` and a `reason`.
 
 ## Server -> client events
 
@@ -80,6 +130,8 @@ Events:
 - `status_error`: parsing or serial error; includes `error`
 - `process_params`: parsed `cur_pro` and `feeder_pro`, emitted on change
 - `process_error`: parsing or serial error; includes `error`
+- `getall`: parsed `getall` snapshot, emitted on change (and on connect)
+- `getall_error`: parsing or serial error; includes `error`
 
 ## Parsed payloads
 
@@ -191,3 +243,4 @@ Notes:
 
 - Keys are lowercased (e.g., `MAXPOWER` -> `maxpower`).
 - `value` and `unit` are only present when a numeric value is detected.
+- Emitted on connect and periodically as the `getall` event.

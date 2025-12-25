@@ -38,6 +38,30 @@ async def ws_handler(
 
     await hub.add(ws)
     audit_log({"kind": "connect"})
+    try:
+        stdout = await msh.exec("getall", timeout=5.0)
+        parsed = parse_getall_block(stdout)
+        await ws.send(
+            cbor2.dumps(
+                {
+                    "type": "event",
+                    "name": "getall",
+                    "ts_ms": int(time.time() * 1000),
+                    "parsed": parsed,
+                }
+            )
+        )
+    except Exception as e:
+        await ws.send(
+            cbor2.dumps(
+                {
+                    "type": "event",
+                    "name": "getall_error",
+                    "ts_ms": int(time.time() * 1000),
+                    "error": str(e),
+                }
+            )
+        )
 
     try:
         async for raw in ws:

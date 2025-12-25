@@ -26,7 +26,10 @@ class FakeWs:
 
 class FakeMsh:
     def __init__(self, responses: dict[str, str] | None = None) -> None:
-        self.responses = responses or {}
+        base = {"getall": "msh >\n"}
+        if responses:
+            base.update(responses)
+        self.responses = base
         self.calls: list[str] = []
 
     async def exec(self, cmd: str, timeout: float = 5.0) -> str:
@@ -47,6 +50,15 @@ def _cfg() -> Config:
     )
 
 
+def _strip_getall_events(messages: list[bytes]) -> list[dict]:
+    decoded = [cbor2.loads(m) for m in messages]
+    return [
+        m
+        for m in decoded
+        if not (m.get("type") == "event" and m.get("name") in {"getall", "getall_error"})
+    ]
+
+
 def test_ws_subscribe_ack() -> None:
     ws = FakeWs([cbor2.dumps({"type": "subscribe"})])
     msh = FakeMsh()
@@ -57,8 +69,9 @@ def test_ws_subscribe_ack() -> None:
 
     asyncio.run(run())
 
-    assert len(ws.sent) == 1
-    msg = cbor2.loads(ws.sent[0])
+    msgs = _strip_getall_events(ws.sent)
+    assert len(msgs) == 1
+    msg = msgs[0]
     assert msg["type"] == "ack"
     assert msg["op"] == "subscribe"
 
@@ -73,7 +86,9 @@ def test_ws_unknown_type_error() -> None:
 
     asyncio.run(run())
 
-    msg = cbor2.loads(ws.sent[0])
+    msgs = _strip_getall_events(ws.sent)
+    assert len(msgs) == 1
+    msg = msgs[0]
     assert msg["type"] == "error"
     assert "Unknown message type" in msg["error"]
 
@@ -88,11 +103,13 @@ def test_ws_disallowed_command() -> None:
 
     asyncio.run(run())
 
-    msg = cbor2.loads(ws.sent[0])
+    msgs = _strip_getall_events(ws.sent)
+    assert len(msgs) == 1
+    msg = msgs[0]
     assert msg["type"] == "result"
     assert msg["ok"] is False
     assert "not allowed" in msg["error"].lower()
-    assert msh.calls == []
+    assert msh.calls == ["getall"]
 
 
 def test_ws_exec_status_parses() -> None:
@@ -106,7 +123,9 @@ def test_ws_exec_status_parses() -> None:
 
     asyncio.run(run())
 
-    msg = cbor2.loads(ws.sent[0])
+    msgs = _strip_getall_events(ws.sent)
+    assert len(msgs) == 1
+    msg = msgs[0]
     assert msg["type"] == "result"
     assert msg["ok"] is True
     assert msg["parsed"]["work_mode"] == "AUTO"

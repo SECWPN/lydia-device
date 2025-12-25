@@ -10,6 +10,7 @@ import cbor2
 from lydia_device.types import WsLike
 
 from .msh import MshSession
+from .parse_getall import GetAllParsed, parse_getall_block
 from .parse_process import ProcessParsed, parse_process_block
 from .parse_status import StatusParsed, parse_status_block
 
@@ -217,6 +218,63 @@ async def poll_process_loop(
                 {
                     "type": "event",
                     "name": "process_error",
+                    "ts_ms": ts_ms,
+                    "latency_ms": latency_ms,
+                    "error": err or "unknown error",
+                }
+            )
+
+        elapsed = time.perf_counter() - t0
+        await asyncio.sleep(max(0.0, period - elapsed))
+
+
+async def poll_getall_loop(
+    msh: MshSession,
+    hub: TelemetryHub,
+    hz: float = 0.05,
+) -> None:
+    """
+    Poll `getall` at a low rate and emit `getall` on change.
+    """
+    hz = max(0.01, min(hz, 0.2))
+    period = 1.0 / hz
+    last_fp: Optional[str] = None
+
+    while True:
+        t0 = time.perf_counter()
+        ts_ms = int(time.time() * 1000)
+
+        ok = True
+        err: Optional[str] = None
+        parsed: Optional[GetAllParsed] = None
+
+        try:
+            stdout = await msh.exec("getall", timeout=5.0)
+            parsed = parse_getall_block(stdout)
+        except Exception as e:
+            ok = False
+            err = str(e)
+
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        if ok and parsed is not None:
+            fp = json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+            if fp != last_fp:
+                last_fp = fp
+                await hub.broadcast(
+                    {
+                        "type": "event",
+                        "name": "getall",
+                        "ts_ms": ts_ms,
+                        "latency_ms": latency_ms,
+                        "parsed": parsed,
+                    }
+                )
+        else:
+            await hub.broadcast(
+                {
+                    "type": "event",
+                    "name": "getall_error",
                     "ts_ms": ts_ms,
                     "latency_ms": latency_ms,
                     "error": err or "unknown error",

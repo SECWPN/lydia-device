@@ -49,3 +49,25 @@ def test_policy_requires_params_for_setter() -> None:
 def test_policy_allows_setter_with_params() -> None:
     allowed, _ = is_allowed("fan 1")
     assert allowed
+
+
+def test_policy_allows_dual_use_power_getter() -> None:
+    allowed, _ = is_allowed("power")
+    assert allowed
+
+
+def test_policy_allows_dual_use_wave_getter() -> None:
+    allowed, _ = is_allowed("wave")
+    assert allowed
+
+
+def test_policy_allows_dual_use_weld_param_getters() -> None:
+    for cmd in ("headfre", "headwide", "feederoutspeed"):
+        allowed, _ = is_allowed(cmd)
+        assert allowed
+
+
+def test_policy_allows_dual_use_weld_param_setters() -> None:
+    for cmd in ("headfre 800", "headwide 80", "feederoutspeed 10"):
+        allowed, _ = is_allowed(cmd)
+        assert allowed

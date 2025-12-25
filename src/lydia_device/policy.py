@@ -6,9 +6,9 @@ BLOCKED_VERBS = {
     "onkey",
     "offkey",
     "laser_en",
-    "continuous",
-    "pulse",
-    "power",
+    #"continuous",
+    #"pulse",
+    #"power",
     "laserdac",
     "drivedc",
     "drivedc",
@@ -44,6 +44,15 @@ SAFE_GETTERS = {
     "cur_pro",
     "feeder_pro",
     "maxpower",
+    "risetk",
+    "falltk",
+    "gaseatk",
+    "gaslatk",
+    "onwatk",
+    "offwatk",
+    "headfre",
+    "headwide",
+    "feederoutspeed",
     "temp",
     "pres",
     "pressure",
@@ -52,9 +61,13 @@ SAFE_GETTERS = {
     "free",
     "ps",
     "list_device",
+    "power",
+    "wave",
 }
 
 SAFE_SETTERS_REQUIRE_PARAMS = {
+    "power",
+    "wave",
     "maxpower",
     "risetk",
     "falltk",
@@ -62,6 +75,9 @@ SAFE_SETTERS_REQUIRE_PARAMS = {
     "gaslatk",
     "onwatk",
     "offwatk",
+    "headfre",
+    "headwide",
+    "feederoutspeed",
     "fan",
     "fanon",
     "fanduty",
@@ -90,6 +106,8 @@ def is_allowed(cmd: str) -> Tuple[bool, str]:
 
     if verb in SAFE_SETTERS_REQUIRE_PARAMS:
         if not args:
+            if verb in SAFE_GETTERS:
+                return True, "Allowed getter"
             return False, f"Missing parameters for setter: {verb}"
         return True, "Allowed setter-with-params"
 
